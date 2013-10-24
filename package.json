@@ -1,0 +1,46 @@
+{
+  "name": "angular-ra-model",
+  "version": "0.0.0",
+  "description": "AngularJS Module: model",
+  "main": "angular-ra-model.js",
+  "directories": {
+    "test": "test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/red-ant/angular-ra-model.git"
+  },
+  "keywords": [
+    "angular",
+    "angularjs",
+    "model"
+  ],
+  "author": "Dan Callaghan",
+  "license": "BSD-2-Clause",
+  "bugs": {
+    "url": "https://github.com/red-ant/angular-ra-model/issues"
+  },
+  "devDependencies": {
+    "grunt": "~0.4.1",
+    "grunt-bower": "~0.6.1",
+    "grunt-contrib-clean": "~0.5.0",
+    "grunt-contrib-concat": "~0.3.0",
+    "grunt-contrib-jshint": "~0.6.2",
+    "grunt-contrib-uglify": "~0.2.2",
+    "grunt-karma": "~0.6.1",
+    "karma": "~0.10.1",
+    "karma-script-launcher": "~0.1.0",
+    "karma-chrome-launcher": "~0.1.0",
+    "karma-coffee-preprocessor": "~0.1.0",
+    "karma-firefox-launcher": "~0.1.0",
+    "karma-html2js-preprocessor": "~0.1.0",
+    "karma-jasmine": "~0.1.0",
+    "karma-osx-reporter": "0.0.3",
+    "karma-phantomjs-launcher": "~0.1.0",
+    "karma-requirejs": "~0.1.0",
+    "matchdep": "~0.1.2",
+    "grunt-bower-task": "~0.3.1",
+    "grunt-bump": "0.0.11",
+    "grunt-ngmin": "0.0.3"
+  }
+}

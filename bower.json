@@ -1,0 +1,17 @@
+{
+  "name": "angular-ra-model",
+  "version": "0.0.0",
+  "ignore": [
+    "**/.*",
+    "components",
+    "node_modules",
+    "test"
+  ],
+  "dependencies": {
+    "angular": "~1.0.8"
+  },
+  "devDependencies": {
+    "angular-mocks": "~1.0.8",
+    "angular-scenario": "~1.0.8"
+  }
+}
