@@ -14,7 +14,9 @@ angular.module('ra.model.services', []).
     };
   }).
 
-  factory('raModel', function($rootScope) {
+  factory('raModel', function($rootScope, $cacheFactory, $location, $q) {
+
+    var model_cache = $cacheFactory('raModel');
 
     // Snippet taken from http://prototypejs.org
     function argumentNames(func) {
@@ -37,6 +39,7 @@ angular.module('ra.model.services', []).
 
       function Model(obj) {
         this.is = {};
+        this.opts = {};
         return angular.extend(this, obj);
       }
 
@@ -51,13 +54,45 @@ angular.module('ra.model.services', []).
         var data = {},
             self = this;
 
-        angular.forEach(keys, function(key) {
+        angular.forEach(getKeys.call(this), function(key) {
           if (key in self) {
             data[key] = self[key];
           }
         });
 
         return data;
+      };
+
+
+      var cacheKey = function(key) {
+        var k = [];
+
+        if (key) {
+          k.push(key);
+        } else if (this.opts.cache.key !== true) {
+          k.push(this.opts.cache.key);
+        } else {
+          k.push($location.path());
+        }
+
+        k.push(name);
+
+        return k.join('|');
+      };
+
+
+      Model.prototype.cache = function(data, key) {
+        model_cache.put(cacheKey.call(this, key), data);
+      };
+
+
+      Model.prototype.cached = function(key) {
+        return model_cache.get(cacheKey.call(this, key));
+      };
+
+
+      Model.prototype.flush = function(key) {
+        model_cache.remove(cacheKey.call(this, key));
       };
 
 
@@ -72,40 +107,45 @@ angular.module('ra.model.services', []).
 
 
       Model.prototype.update = function() {
-        var self    = this;
-        var data    = this.data();
-        var promise = this.$update.call(data);
+        var self = this,
+            deferred = $q.defer();
+
+        var success = function updateSuccess(response) {
+          if (angular.isFunction(self.updateSuccess)) {
+            self.updateSuccess(response);
+          }
+
+          self.is.updating   = false;
+          self.is.processing = false;
+
+          self.snapshot();
+
+          $scope.$broadcast(self.name + ':updateComplete', response);
+          $scope.$broadcast(self.name + ':updateSuccess',  response);
+
+          deferred.resolve(response);
+        };
+
+        var error = function updateError(response) {
+          if (angular.isFunction(self.updateError)) {
+            self.updateError(response);
+          }
+
+          self.is.updating   = false;
+          self.is.processing = false;
+
+          $scope.$broadcast(self.name + ':updateComplete', response);
+          $scope.$broadcast(self.name + ':updateError',    response);
+
+          deferred.reject(response);
+        };
+
+        this.$update.call(this.data(), success, error);
 
         this.is.updating   = true;
         this.is.processing = true;
 
-        promise
-          .then(function(response) {
-            if (angular.isFunction(self.updateSuccess)) {
-              self.updateSuccess(response);
-            }
-
-            self.is.updating   = false;
-            self.is.processing = false;
-
-            self.snapshot();
-
-            $scope.$broadcast(self.name + ':updateComplete', response);
-            $scope.$broadcast(self.name + ':updateSuccess',  response);
-          })
-          .catch(function(response) {
-            if (angular.isFunction(self.updateError)) {
-              self.updateError(response);
-            }
-
-            self.is.updating   = false;
-            self.is.processing = false;
-
-            $scope.$broadcast(self.name + ':updateComplete', response);
-            $scope.$broadcast(self.name + ':updateError',    response);
-          });
-
-        return promise;
+        return deferred.promise;
       };
 
 
@@ -139,9 +179,17 @@ angular.module('ra.model.services', []).
         }.bind(this));
       };
 
-
       var get = function(passed_params) {
         var call;
+
+        if (this.opts.cache) {
+          var cache = this.cached();
+
+          if (cache) {
+            success.call(this, cache);
+            return true;
+          }
+        }
 
         if (this.resource) {
           var args = [],
@@ -165,8 +213,12 @@ angular.module('ra.model.services', []).
             context  = this.resource;
           }
 
+          args.push(
+            success.bind(this),
+            error.bind(this)
+          );
+
           call = resource.apply(context, args);
-          call.$promise.then(success.bind(this), error.bind(this));
         } else if (this.get) {
           call = this.get();
         }
@@ -201,6 +253,11 @@ angular.module('ra.model.services', []).
 
         this.snapshot();
 
+        if (this.opts.cache &&
+            this.opts.cache.set !== false) {
+          this.cache(response);
+        }
+
         $scope.$broadcast(name + ':success',  response);
         $scope.$broadcast(name + ':complete', response);
       };
@@ -222,7 +279,7 @@ angular.module('ra.model.services', []).
       var setKeys = function(response) {
         var obj;
 
-        if (angular.isArray(response) && response.length > 1) {
+        if (angular.isArray(response) && response.length > 0) {
           obj = response[0];
         } else {
           obj = response;
@@ -240,6 +297,18 @@ angular.module('ra.model.services', []).
 
           keys = _keys;
         }
+      };
+
+      var getKeys = function() {
+        if (angular.isArray(keys) && keys.length > 0) {
+          return keys;
+        }
+
+        else if (angular.isArray(this.keys) && this.keys.length > 0) {
+          return this.keys;
+        }
+
+        return [];
       };
 
       return new Model(obj);
