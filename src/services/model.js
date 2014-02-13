@@ -45,8 +45,19 @@ angular.module('ra.model.services', []).
 
 
       Model.prototype.init = function(params) {
+        if (angular.isFunction(this.beforeInit)) {
+          this.beforeInit(params);
+        }
+
+        var call = get.call(this, params);
+
+        if (angular.isFunction(this.afterInit)) {
+          this.afterInit(call, params);
+        }
+
         this.is.inited = true;
-        return get.call(this, params);
+
+        return call;
       };
 
 
