@@ -176,7 +176,7 @@ angular.module('ra.model.services', []).
               value = (function(m) {
                 return function() {
                   var args = Array.prototype.slice.call(arguments, 0);
-                  args.push($super.bind(self));
+                  args.unshift($super.bind(self));
 
                   method.apply(self, args);
                 };
@@ -224,12 +224,11 @@ angular.module('ra.model.services', []).
             context  = this.resource;
           }
 
-          args.push(
+          call = resource.apply(context, args);
+          call.$promise.then(
             success.bind(this),
             error.bind(this)
           );
-
-          call = resource.apply(context, args);
         } else if (this.get) {
           call = this.get();
         }
