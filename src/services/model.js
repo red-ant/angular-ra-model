@@ -225,7 +225,7 @@ angular.module('ra.model.services', []).
           }
 
           call = resource.apply(context, args);
-          call.$promise.then(
+          this.$promise = call.$promise.then(
             success.bind(this),
             error.bind(this)
           );
