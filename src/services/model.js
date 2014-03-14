@@ -216,7 +216,6 @@ angular.module('ra.model.services', []).
 
           args.push(
             angular.extend({}, params, passed_params),
-            setHeaders.bind(this),
             setHeaders.bind(this)
           );
 
