@@ -214,7 +214,11 @@ angular.module('ra.model.services', []).
             }
           }
 
-          args.push(angular.extend({}, params, passed_params));
+          args.push(
+            angular.extend({}, params, passed_params),
+            setHeaders.bind(this),
+            setHeaders.bind(this)
+          );
 
           var resource = this.resource,
               context  = this;
@@ -236,6 +240,14 @@ angular.module('ra.model.services', []).
         this.is.loading = true;
 
         return call;
+      };
+
+
+      var setHeaders = function(response, headers) {
+        this.$headers = headers;
+        this.$headers.parse = function(key) {
+          return angular.fromJson(this(key));
+        };
       };
 
 
