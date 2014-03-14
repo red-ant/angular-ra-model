@@ -253,7 +253,7 @@ angular.module('ra.model.services', []).
       };
 
 
-      var success = function(response, headers) {
+      var success = function(response) {
         setKeys.call(this, response);
 
         if (this.resource_set !== false) {
@@ -272,7 +272,7 @@ angular.module('ra.model.services', []).
         this.is.loading = false;
 
         if (angular.isFunction(this.success)) {
-          this.success(response, headers);
+          this.success(response, this.$headers);
         }
 
         this.snapshot();
@@ -282,8 +282,10 @@ angular.module('ra.model.services', []).
           this.cache(response);
         }
 
-        $scope.$broadcast(name + ':success',  response, headers);
-        $scope.$broadcast(name + ':complete', response, headers);
+        $scope.$broadcast(name + ':success',  response, this.$headers);
+        $scope.$broadcast(name + ':complete', response, this.$headers);
+
+        return response;
       };
 
 
@@ -297,6 +299,8 @@ angular.module('ra.model.services', []).
 
         $scope.$broadcast(name + ':error',    response);
         $scope.$broadcast(name + ':complete', response);
+
+        return response;
       };
 
 
