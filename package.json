@@ -1,6 +1,6 @@
 {
   "name": "angular-ra-model",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "AngularJS Module: model",
   "main": "angular-ra-model.js",
   "directories": {
