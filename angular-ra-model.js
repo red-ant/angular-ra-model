@@ -32,7 +32,8 @@ angular.module('ra.model.services', []).
 
 
     function ModelFactory($scope, name, obj) {
-      var keys, original;
+      var attrs,
+          original;
 
       if (angular.isString($scope)) {
         obj    = name;
@@ -43,6 +44,10 @@ angular.module('ra.model.services', []).
       function Model(obj) {
         this.is = {};
         this.opts = {};
+
+        this.attr_accessible = [];
+        this.attr_protected  = [];
+
         return angular.extend(this, obj);
       }
 
@@ -68,9 +73,9 @@ angular.module('ra.model.services', []).
         var data = {},
             self = this;
 
-        angular.forEach(getKeys.call(this), function(key) {
-          if (key in self) {
-            data[key] = self[key];
+        angular.forEach(getAttrs.call(this), function(attr) {
+          if (attr in self) {
+            data[attr] = self[attr];
           }
         });
 
@@ -254,7 +259,7 @@ angular.module('ra.model.services', []).
 
 
       var success = function(response) {
-        setKeys.call(this, response);
+        setAttrs.call(this, response);
 
         if (this.resource_set !== false) {
           if (angular.isArray(response)) {
@@ -304,7 +309,7 @@ angular.module('ra.model.services', []).
       };
 
 
-      var setKeys = function(response) {
+      var setAttrs = function(response) {
         var obj;
 
         if (angular.isArray(response) && response.length > 0) {
@@ -314,26 +319,31 @@ angular.module('ra.model.services', []).
         }
 
         if (angular.isObject(obj)) {
-          var _keys = [];
+          attrs = [];
 
           // TODO: might have to refactor this for backwards compatibility
-          angular.forEach(Object.keys(obj), function(key) {
-            if (key.charAt(0) !== '$' && key.charAt(0) !== '_') {
-              _keys.push(key);
+          var keys = Object.keys(obj).concat(this.attr_accessible),
+              self = this;
+
+          angular.forEach(keys, function(key) {
+            if (key) {
+              var f = key.charAt(0);
+
+              if (f !== '$' && f !== '_' && attrs.indexOf(key) === -1 && self.attr_protected.indexOf(key) === -1) {
+                attrs.push(key);
+              }
             }
           });
-
-          keys = _keys;
         }
       };
 
-      var getKeys = function() {
-        if (angular.isArray(keys) && keys.length > 0) {
-          return keys;
+      var getAttrs = function() {
+        if (angular.isArray(attrs) && attrs.length > 0) {
+          return attrs;
         }
 
-        else if (angular.isArray(this.keys) && this.keys.length > 0) {
-          return this.keys;
+        else if (angular.isArray(this.attr_accessible) && this.attr_accessible.length > 0) {
+          return this.attr_accessible;
         }
 
         return [];
@@ -341,6 +351,7 @@ angular.module('ra.model.services', []).
 
       return new Model(obj);
     }
+
 
     return ModelFactory;
   });
