@@ -1,60 +1,88 @@
-'use strict';
+(function() {
+  'use strict';
 
-/* globals $:true */
-angular.module('ra.model.services', []).
+  // Snippet taken from http://prototypejs.org
+  function argumentNames(func) {
+    var names = func.toString()
+                    .match(/^[\s\(]*function[^(]*\(([^)]*)\)/)[1]
+                    .replace(/\/\/.*?[\r\n]|\/\*(?:.|[\r\n])*?\*\//g, '')
+                    .replace(/\s+/g, '')
+                    .split(',');
 
-  run(function($rootScope, raModel) {
-    // TODO: add configuration option to disable
-    // convenience method polluting $rootScope
-    $rootScope.model = function(name, obj) {
-      var model  = raModel(this, name, obj);
-      this[name] = model;
+    return names.length === 1 && !names[0] ? [] : names;
+  }
 
-      return model;
-    };
-  }).
-
-  factory('raModel', function($rootScope, $cacheFactory, $location, $q) {
-
-    var model_cache = $cacheFactory('raModel');
-
-    // Snippet taken from http://prototypejs.org
-    function argumentNames(func) {
-      var names = func.toString().match(/^[\s\(]*function[^(]*\(([^)]*)\)/)[1]
-        .replace(/\/\/.*?[\r\n]|\/\*(?:.|[\r\n])*?\*\//g, '')
-        .replace(/\s+/g, '').split(',');
-
-      return names.length === 1 && !names[0] ? [] : names;
-    }
-
-
-    function ModelFactory($scope, name, obj) {
-      var attrs,
-          original;
-
-      if (angular.isString($scope)) {
-        obj    = name;
-        name   = $scope;
-        $scope = $rootScope;
+  function extend(obj) {
+    angular.forEach(Array.prototype.slice.call(arguments, 1), function(source) {
+      if (obj && source) {
+        for (var prop in source) {
+          obj[prop] = source[prop];
+        }
       }
+    });
 
-      function Model(obj) {
-        this.is = {};
-        this.opts = {};
+    return obj;
+  }
 
-        this.attr_accessible = [];
-        this.attr_protected  = [];
+  angular.module('ra.model.services', [])
 
-        return angular.extend(this, obj);
-      }
+    .run(function($rootScope, raModel) {
+      // TODO: add configuration option to disable
+      // convenience method polluting $rootScope
+      $rootScope.model = function(name, config) {
+        var model = new raModel(this, name, config);
 
+        this[name] = model;
 
-      Model.prototype.init = function(params) {
+        return model;
+      };
+    })
+
+    .factory('raModel', function($rootScope, $cacheFactory, $location, $q) {
+      var model_cache = $cacheFactory('raModel');
+
+      // Constructor
+      var raModel = function raModel(scope, name, config) {
+        if (!(this instanceof raModel) ) {
+          return new raModel(scope, name, config);
+        }
+
+        var args = Array.prototype.slice.call(arguments),
+            model;
+
+        // Optional first parameter
+        if (!angular.isObject(args[0]) && args[0] !== false) {
+          args.unshift($rootScope);
+        }
+
+        scope  = args[0];
+        name   = args[1];
+        config = args[2] || {};
+
+        // Extend model with config
+        this.extend(config);
+
+        // Set privileged vars
+        this.name               = name;
+        this.is                 = config.is || {};
+        this.opts               = config.opts || {};
+        this.attr_accessible    = config.attr_accessible || [];
+        this.attr_protected     = config.attr_protected || [];
+        this.resource_attribute = config.resource_attribute || 'items';
+
+        // Privileged accessors
+        this._scope = function() {
+          return scope;
+        };
+      };
+
+      // Public methods
+      raModel.prototype.init = function(params) {
         if (angular.isFunction(this.beforeInit)) {
           this.beforeInit(params);
         }
 
-        var call = get.call(this, params);
+        var call = this.get(params);
 
         if (angular.isFunction(this.afterInit)) {
           this.afterInit(call, params);
@@ -65,22 +93,326 @@ angular.module('ra.model.services', []).
         return call;
       };
 
+      raModel.prototype.get = function(passed_params) {
+        if (this.opts.cache) {
+          var cache = this.cached();
 
-      Model.prototype.data = function() {
-        var data = {},
-            self = this;
+          if (cache) {
+            $q.when(cache)
+              .then(function() {
+                this.success(cache);
+              }.bind(this));
 
-        angular.forEach(getAttrs.call(this), function(attr) {
-          if (attr in self) {
-            data[attr] = self[attr];
+            return cache;
           }
-        });
+        }
+
+        var args = [],
+            call,
+            params;
+
+        if (this.params) {
+          if (angular.isFunction(this.params)) {
+            params = this.params();
+          } else {
+            params = this.params;
+          }
+        }
+
+        args.push(
+          angular.extend({}, params, passed_params),
+          this._setHeaders.bind(this)
+        );
+
+        if (this.resource) {
+          var resource = this.resource,
+              context  = this;
+
+          if (this.resource_method) {
+            resource = resource[this.resource_method];
+            context  = this.resource;
+          }
+
+          call = resource.apply(context, args);
+
+          if (call && call.$promise) {
+            this.$promise = call.$promise.then(
+              this.success.bind(this),
+              this.error.bind(this)
+            );
+          }
+        } else if (angular.isFunction(this.config.get)) {
+          call = this.config.get.apply(this, args);
+        }
+
+        this.is.loading = true;
+
+        return call;
+      };
+
+      raModel.prototype.update = function() {
+        var deferred = $q.defer();
+
+        var success = function updateSuccess(response) {
+          if (angular.isFunction(this.updateSuccess)) {
+            this.updateSuccess(response);
+          }
+
+          this.is.updating   = false;
+          this.is.processing = false;
+
+          this.snapshot();
+
+          if (this._scope()) {
+            this._scope().$broadcast(this.name + ':updateComplete', response);
+            this._scope().$broadcast(this.name + ':updateSuccess',  response);
+          }
+
+          deferred.resolve(response);
+        };
+
+        var error = function updateError(response) {
+          if (angular.isFunction(this.updateError)) {
+            this.updateError(response);
+          }
+
+          this.is.updating   = false;
+          this.is.processing = false;
+
+          if (this._scope()) {
+            this._scope().$broadcast(this.name + ':updateComplete', response);
+            this._scope().$broadcast(this.name + ':updateError',    response);
+          }
+
+          deferred.reject(response);
+        };
+
+        if (angular.isFunction(this.$update)) {
+          this.is.updating   = true;
+          this.is.processing = true;
+
+          this.$update.call(this.getData(), success.bind(this), error.bind(this));
+        }
+
+        return deferred.promise;
+      };
+
+      raModel.prototype.success = function(response) {
+        this._setAttrs(response);
+
+        if (this.resource_set !== false) {
+          if (angular.isArray(response)) {
+            this[this.resource_attribute] = response;
+          } else {
+            extend(this, response);
+          }
+        }
+
+        this.is.loaded  = true;
+        this.is.loading = false;
+
+        if (angular.isFunction(this.config.success)) {
+          this.config.success.call(this, response, this.$headers);
+        }
+
+        this.snapshot();
+
+        if (this.opts.cache &&
+            this.opts.cache.set !== false) {
+          this.cache(response);
+        }
+
+        if (this._scope()) {
+          this._scope().$broadcast(this.name + ':success',  response, this.$headers);
+          this._scope().$broadcast(this.name + ':complete', response, this.$headers);
+        }
+
+        return response;
+      };
+
+      raModel.prototype.error = function(response) {
+        this.is.loaded  = true;
+        this.is.loading = false;
+
+        if (angular.isFunction(this.config.error)) {
+          this.config.error.call(this, response);
+        }
+
+        if (this._scope()) {
+          this._scope().$broadcast(this.name + ':error',    response);
+          this._scope().$broadcast(this.name + ':complete', response);
+        }
+
+        return $q.reject(response);
+      };
+
+      raModel.prototype.cache = function(data, key) {
+        // Put in cache object
+        model_cache.put(this._cacheKey(key), data);
+      };
+
+      raModel.prototype.cached = function(key) {
+        // Return cache object
+        return model_cache.get(this._cacheKey(key));
+      };
+
+      raModel.prototype.snapshot = function() {
+        // Snapshot data
+        this._original = this.getData();
+      };
+
+      raModel.prototype.reset = function() {
+        // Reset data
+        if (angular.isArray(this._original)) {
+          angular.forEach(this[this.resource_attribute], function(resource) {
+            for (var i = 0, len = this._original.length; i < len; i++) {
+              if (angular.isObject(resource) && angular.isObject(this._original[i]) &&
+                  resource.id === this._original[i].id) {
+                angular.extend(resource, angular.copy(this._original[i]));
+                break;
+              }
+            }
+          }.bind(this));
+        } else {
+          angular.extend(this, angular.copy(this._original));
+        }
+      };
+
+      raModel.prototype.flush = function(key) {
+        // Flush cache
+        model_cache.remove(this._cacheKey(key));
+      };
+
+      raModel.prototype.extend = function(config) {
+        var self = this;
+
+        // Default config
+        config = config || {};
+
+        // Extend config
+        if (this.config) {
+          extend(this.config, config);
+        } else {
+          this.config = config;
+        }
+
+        // Go through each prop in config (including inherited props/methods) and extend the model with it
+        for (var prop in config) {
+          var value = config[prop];
+
+          // Extending methods
+          if (angular.isFunction(value)) {
+            // Override existing method if first argument name is '$super'
+            if (argumentNames(value)[0] === '$super') {
+              var $super = this[prop],
+                  method = angular.copy(value);
+
+              // Create a new method and pass original method into the new method
+              value = function() {
+                var args = Array.prototype.slice.call(arguments, 0);
+                args.unshift($super.bind(self));
+
+                return method.apply(self, args);
+              };
+
+              this[prop] = value;
+            }
+
+            // Otherwise, only override method if not part of raModel.prototype
+            else if (angular.isUndefined(raModel.prototype[prop]) ||
+                     angular.isDefined(raModel.prototype[prop]) && raModel.prototype[prop] === Object.prototype[prop]) {
+              this[prop] = value;
+            }
+          }
+
+          // Extending properties
+          else {
+            this[prop] = value;
+          }
+        }
+      };
+
+      raModel.prototype.data = raModel.prototype.getData = function() {
+        var self = this,
+            data;
+
+        if (angular.isArray(self[self.resource_attribute])) {
+          data = [];
+
+          angular.forEach(self[self.resource_attribute], function(resource) {
+            var resource_data = {};
+
+            angular.forEach(self._getAttrs(), function(attr) {
+              if (attr in resource) {
+                resource_data[attr] = angular.copy(resource[attr]);
+              }
+            });
+
+            data.push(resource_data);
+          });
+        } else {
+          data = {};
+
+          angular.forEach(self._getAttrs(), function(attr) {
+            if (attr in self) {
+              data[attr] = angular.copy(self[attr]);
+            }
+          });
+        }
 
         return data;
       };
 
+      // Privileged methods
+      raModel.prototype._setHeaders = function(response, headers) {
+        this.$headers = headers;
 
-      var cacheKey = function(key) {
+        this.$headers.parse = function(key) {
+          return angular.fromJson(this(key));
+        };
+      };
+
+      raModel.prototype._setAttrs = function(response) {
+        var obj;
+
+        if (angular.isArray(response) && response.length > 0) {
+          obj = response[0];
+        } else {
+          obj = response;
+        }
+
+        if (angular.isObject(obj)) {
+          this._attrs = [];
+
+          // TODO: might have to refactor this for backwards compatibility
+          var keys = Object.keys(obj).concat(this.attr_accessible),
+              self = this;
+
+          angular.forEach(keys, function(key) {
+            if (key) {
+              var f = key.charAt(0);
+
+              if (f !== '$' && f !== '_' && self._attrs.indexOf(key) === -1 && self.attr_protected.indexOf(key) === -1) {
+                self._attrs.push(key);
+              }
+            }
+          });
+        }
+      };
+
+      raModel.prototype._getAttrs = function() {
+        if (angular.isArray(this._attrs) && this._attrs.length > 0) {
+          return this._attrs;
+        }
+
+        else if (angular.isArray(this.attr_accessible) && this.attr_accessible.length > 0) {
+          return this.attr_accessible;
+        }
+
+        return [];
+      };
+
+      raModel.prototype._cacheKey = function(key) {
         var k = [];
 
         if (key) {
@@ -91,264 +423,12 @@ angular.module('ra.model.services', []).
           k.push($location.path());
         }
 
-        k.push(name);
+        k.push(this.name);
 
         return k.join('|');
       };
 
+      return raModel;
+    });
 
-      Model.prototype.cache = function(data, key) {
-        model_cache.put(cacheKey.call(this, key), data);
-      };
-
-
-      Model.prototype.cached = function(key) {
-        return model_cache.get(cacheKey.call(this, key));
-      };
-
-
-      Model.prototype.flush = function(key) {
-        model_cache.remove(cacheKey.call(this, key));
-      };
-
-
-      Model.prototype.snapshot = function() {
-        original = this.data();
-      };
-
-
-      Model.prototype.reset = function() {
-        angular.extend(this, original);
-      };
-
-
-      Model.prototype.update = function() {
-        var self = this,
-            deferred = $q.defer();
-
-        var success = function updateSuccess(response) {
-          if (angular.isFunction(self.updateSuccess)) {
-            self.updateSuccess(response);
-          }
-
-          self.is.updating   = false;
-          self.is.processing = false;
-
-          self.snapshot();
-
-          $scope.$broadcast(self.name + ':updateComplete', response);
-          $scope.$broadcast(self.name + ':updateSuccess',  response);
-
-          deferred.resolve(response);
-        };
-
-        var error = function updateError(response) {
-          if (angular.isFunction(self.updateError)) {
-            self.updateError(response);
-          }
-
-          self.is.updating   = false;
-          self.is.processing = false;
-
-          $scope.$broadcast(self.name + ':updateComplete', response);
-          $scope.$broadcast(self.name + ':updateError',    response);
-
-          deferred.reject(response);
-        };
-
-        this.$update.call(this.data(), success, error);
-
-        this.is.updating   = true;
-        this.is.processing = true;
-
-        return deferred.promise;
-      };
-
-
-      // TODO: inheritance needs to be tested throroughly
-      Model.prototype.extend = function(methods) {
-        var self       = this;
-        var properties = Object.keys(methods);
-
-        angular.forEach(properties, function(property) {
-          var value = methods[property];
-
-          if (angular.isFunction(value)) {
-            if (argumentNames(value)[0] === '$super') {
-              var method = angular.copy(value);
-              var $super = self[property];
-
-              value = (function(m) {
-                return function() {
-                  var args = Array.prototype.slice.call(arguments, 0);
-                  args.unshift($super.bind(self));
-
-                  method.apply(self, args);
-                };
-              })(property);
-
-              self[property] = value;
-            } else {
-              self[property] = value;
-            }
-          }
-        }.bind(this));
-      };
-
-      var get = function(passed_params) {
-        var call;
-
-        if (this.opts.cache) {
-          var cache = this.cached();
-
-          if (cache) {
-            success.call(this, cache);
-            return true;
-          }
-        }
-
-        if (this.resource) {
-          var args = [],
-              params;
-
-          if (this.params) {
-            if (angular.isFunction(this.params)) {
-              params = this.params();
-            } else {
-              params = this.params;
-            }
-          }
-
-          args.push(
-            angular.extend({}, params, passed_params),
-            setHeaders.bind(this)
-          );
-
-          var resource = this.resource,
-              context  = this;
-
-          if (this.resource_method) {
-            resource = resource[this.resource_method];
-            context  = this.resource;
-          }
-
-          call = resource.apply(context, args);
-          this.$promise = call.$promise.then(
-            success.bind(this),
-            error.bind(this)
-          );
-        } else if (this.get) {
-          call = this.get();
-        }
-
-        this.is.loading = true;
-
-        return call;
-      };
-
-
-      var setHeaders = function(response, headers) {
-        this.$headers = headers;
-        this.$headers.parse = function(key) {
-          return angular.fromJson(this(key));
-        };
-      };
-
-
-      var success = function(response) {
-        setAttrs.call(this, response);
-
-        if (this.resource_set !== false) {
-          if (angular.isArray(response)) {
-            var resource_attribute   = this.resource_attribute || 'items';
-            this[resource_attribute] = response;
-          } else {
-            // At the moment angular.extend does not pull in prototype methods
-            // when doing an extend. Need to look into a nicer way of doing
-            // this and hopefully removing jQuery as a dependency
-            $.extend(this, response);
-          }
-        }
-
-        this.is.loaded  = true;
-        this.is.loading = false;
-
-        if (angular.isFunction(this.success)) {
-          this.success(response, this.$headers);
-        }
-
-        this.snapshot();
-
-        if (this.opts.cache &&
-            this.opts.cache.set !== false) {
-          this.cache(response);
-        }
-
-        $scope.$broadcast(name + ':success',  response, this.$headers);
-        $scope.$broadcast(name + ':complete', response, this.$headers);
-
-        return response;
-      };
-
-
-      var error = function(response) {
-        this.is.loaded  = true;
-        this.is.loading = false;
-
-        if (angular.isFunction(this.error)) {
-          this.error(response);
-        }
-
-        $scope.$broadcast(name + ':error',    response);
-        $scope.$broadcast(name + ':complete', response);
-
-        return response;
-      };
-
-
-      var setAttrs = function(response) {
-        var obj;
-
-        if (angular.isArray(response) && response.length > 0) {
-          obj = response[0];
-        } else {
-          obj = response;
-        }
-
-        if (angular.isObject(obj)) {
-          attrs = [];
-
-          // TODO: might have to refactor this for backwards compatibility
-          var keys = Object.keys(obj).concat(this.attr_accessible),
-              self = this;
-
-          angular.forEach(keys, function(key) {
-            if (key) {
-              var f = key.charAt(0);
-
-              if (f !== '$' && f !== '_' && attrs.indexOf(key) === -1 && self.attr_protected.indexOf(key) === -1) {
-                attrs.push(key);
-              }
-            }
-          });
-        }
-      };
-
-      var getAttrs = function() {
-        if (angular.isArray(attrs) && attrs.length > 0) {
-          return attrs;
-        }
-
-        else if (angular.isArray(this.attr_accessible) && this.attr_accessible.length > 0) {
-          return this.attr_accessible;
-        }
-
-        return [];
-      };
-
-      return new Model(obj);
-    }
-
-
-    return ModelFactory;
-  });
+})();

@@ -4,7 +4,20 @@
   "node"          : true,
   "predef"        : [
     "angular",
-    "_"
+    "jasmine",
+
+    "describe",
+    "xdescribe",
+    "it",
+    "xit",
+    "expect",
+    "beforeEach",
+    "afterEach",
+    "spyOn",
+    "spyOnObject",
+
+    "module",
+    "inject"
   ],
 
   "debug"         : false,
@@ -23,7 +36,7 @@
   "forin"         : false,
   "immed"         : true,
   "latedef"       : true,
-  "loopfunc"      : false,
+  "loopfunc"      : true,
   "noarg"         : true,
   "regexp"        : true,
   "regexdash"     : false,
@@ -31,7 +44,7 @@
   "shadow"        : false,
   "supernew"      : false,
   "undef"         : true,
-  "newcap"        : true,
+  "newcap"        : false,
   "noempty"       : true,
   "nonew"         : true,
   "plusplus"      : false,
