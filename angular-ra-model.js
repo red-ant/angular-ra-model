@@ -77,6 +77,7 @@ angular.module('ra.model', ['ra.model.services']);
         this._scope = function() {
           return scope;
         };
+
       };
 
       // Public methods
@@ -154,50 +155,51 @@ angular.module('ra.model', ['ra.model.services']);
       };
 
       raModel.prototype.update = function() {
-        var deferred = $q.defer();
+        this.is.updating   = true;
+        this.is.processing = true;
 
-        var success = function updateSuccess(response) {
-          if (angular.isFunction(this.updateSuccess)) {
-            this.updateSuccess(response);
-          }
-
+        var updateSuccess = function updateSuccess(response) {
           this.is.updating   = false;
           this.is.processing = false;
-
           this.snapshot();
-
-          if (this._scope()) {
-            this._scope().$broadcast(this.name + ':updateComplete', response);
-            this._scope().$broadcast(this.name + ':updateSuccess',  response);
-          }
-
-          deferred.resolve(response);
+          this._broadcast('updateComplete', 'updateSuccess').data(response);
         };
 
-        var error = function updateError(response) {
-          if (angular.isFunction(this.updateError)) {
-            this.updateError(response);
-          }
-
+        var updateError = function updateError(response) {
           this.is.updating   = false;
           this.is.processing = false;
-
-          if (this._scope()) {
-            this._scope().$broadcast(this.name + ':updateComplete', response);
-            this._scope().$broadcast(this.name + ':updateError',    response);
-          }
-
-          deferred.reject(response);
+          this._broadcast('updateComplete', 'updateError').data(response);
         };
 
-        if (angular.isFunction(this.$update)) {
-          this.is.updating   = true;
-          this.is.processing = true;
+        var promise;
 
-          this.$update.call(this.getData(), success.bind(this), error.bind(this));
+        if (angular.isFunction(this.config.update)) {
+          promise = this.config.update.call(this, this.getData());
         }
 
-        return deferred.promise;
+        else if (angular.isFunction(this.$update)) {
+          promise = this.$update.call(this.getData());
+        }
+
+        else {
+          throw new Error('Model must have an resource.$update method or update method.');
+        }
+
+        // Make sure we have a promise
+        promise = $q.when(promise);
+
+        if (angular.isFunction(this.config.updateSuccess)) {
+          promise = promise.then(this.config.updateSuccess.bind(this));
+        }
+        if (angular.isFunction(this.config.updateError)) {
+          promise = promise.catch(this.config.updateError.bind(this));
+        }
+
+        return promise
+          .then(
+            updateSuccess.bind(this),
+            updateError.bind(this)
+          );
       };
 
       raModel.prototype.success = function(response) {
@@ -225,10 +227,7 @@ angular.module('ra.model', ['ra.model.services']);
           this.cache(response);
         }
 
-        if (this._scope()) {
-          this._scope().$broadcast(this.name + ':success',  response, this.$headers);
-          this._scope().$broadcast(this.name + ':complete', response, this.$headers);
-        }
+        this._broadcast('success', 'complete').data(response, this.$headers);
 
         return response;
       };
@@ -241,10 +240,7 @@ angular.module('ra.model', ['ra.model.services']);
           this.config.error.call(this, response);
         }
 
-        if (this._scope()) {
-          this._scope().$broadcast(this.name + ':error',    response);
-          this._scope().$broadcast(this.name + ':complete', response);
-        }
+        this._broadcast('error', 'complete').data(response);
 
         return $q.reject(response);
       };
@@ -429,6 +425,27 @@ angular.module('ra.model', ['ra.model.services']);
         k.push(this.name);
 
         return k.join('|');
+      };
+
+      raModel.prototype._broadcast = function() {
+        var self  = this,
+            scope = self._scope(),
+            messages = Array.prototype.slice.call(arguments, 0);
+
+        var broadcastData = function() {
+          if (scope && scope.$broadcast) {
+            var params = Array.prototype.slice.call(arguments, 0);
+
+            angular.forEach(messages, function(message) {
+              var args = angular.copy(params);
+              args.unshift(self.name +':'+ message);
+
+              scope.$broadcast.apply(scope, args);
+            });
+          }
+        };
+
+        return { data: broadcastData };
       };
 
       return raModel;
