@@ -14,6 +14,18 @@ describe('raModel >', function() {
       cache,
       params;
 
+
+  function promiseSpy() {
+    var deferred = $q.defer();
+    var chain    = function() { return this; };
+
+    spyOn(deferred.promise, 'then').andCallFake(chain);
+    spyOn(deferred.promise, 'catch').andCallFake(chain);
+    spyOn(deferred.promise, 'finally').andCallFake(chain);
+
+    return deferred.promise;
+  }
+
   beforeEach(function() {
     module('ra.model.services');
 
@@ -224,9 +236,15 @@ describe('raModel >', function() {
       spyOn(model, 'getData').andReturn(response);
     });
 
+    it('should call the update method specified in the config', function() {
+      model.extend({ update: jasmine.createSpy('updateSpy') });
+      model.update();
+      expect(model.config.update).toHaveBeenCalledWith(response);
+    });
+
     it('should call $update if defined', function() {
       model.update();
-      expect(model.$update).toHaveBeenCalledWith(jasmine.any(Function), jasmine.any(Function));
+      expect(model.$update).toHaveBeenCalledWith();
     });
 
     it('should flag status', function() {
@@ -240,38 +258,91 @@ describe('raModel >', function() {
       expect(promise.then).toEqual(jasmine.any(Function));
     });
 
-    describe('if successful >', function() {
+    describe('promise >', function() {
       beforeEach(function() {
-        model.$update.andCallFake(function(success) {
-          success.call(model, response);
+        this.promiseSpy = promiseSpy();
+
+        model.extend({
+          updateSuccess: jasmine.createSpy('updateSuccess'),
+          updateError:   jasmine.createSpy('updateError')
         });
+
+        spyOn(model.config.updateSuccess, 'bind').andReturn(model.config.updateSuccess);
+        spyOn(model.config.updateError, 'bind').andReturn(model.config.updateError);
+
+        spyOn($q, 'when').andReturn(this.promiseSpy);
+        model.$update.andReturn(this.promiseSpy);
+
+        model.update();
+        $rootScope.$digest();
+      });
+
+      it('should chain some functions to a promise', function() {
+        expect($q.when).toHaveBeenCalledWith(this.promiseSpy);
+        expect(this.promiseSpy.then).toHaveBeenCalledWith(jasmine.any(Function), jasmine.any(Function));
+      });
+
+      it('should chain config.updateSuccess to the promise', function() {
+        expect(this.promiseSpy.then).toHaveBeenCalledWith(model.config.updateSuccess);
+      });
+
+      it('should chain config.updateError to the promise', function() {
+        expect(this.promiseSpy.catch).toHaveBeenCalledWith(model.config.updateError);
+      });
+    });
+
+    describe('callbacks >', function() {
+      beforeEach(function() {
+        this.promiseSpy = promiseSpy();
+
+        model.$update = jasmine.createSpy('$update').andReturn(this.promiseSpy);
+
         spyOn(model, 'snapshot');
         spyOn(model, '_scope').andReturn(scope);
         spyOn(scope, '$broadcast');
-      });
 
-      it('should flag status', function() {
-        model.update();
-        expect(model.is.updating).toBeFalsy();
-        expect(model.is.processing).toBeFalsy();
-      });
-
-      it('should take a snapshot', function() {
-        model.update();
-        expect(model.snapshot).toHaveBeenCalled();
-      });
-
-      it('should broadcast event', function() {
         model.name = 'recipe';
         model.update();
-        expect(scope.$broadcast).toHaveBeenCalledWith('recipe:updateComplete', response);
-        expect(scope.$broadcast).toHaveBeenCalledWith('recipe:updateSuccess', response);
+
+        $rootScope.$digest();
       });
 
-      it('should call custom update callback', function() {
-        model.updateSuccess = jasmine.createSpy('updateSuccess');
-        model.update();
-        expect(model.updateSuccess).toHaveBeenCalledWith(response);
+      describe('success >', function() {
+        beforeEach(function() {
+          this.promiseSpy.then.mostRecentCall.args[0](response);
+          $rootScope.$digest();
+        });
+
+        it('should flag status', function() {
+          expect(model.is.updating).toBe(false);
+          expect(model.is.processing).toBe(false);
+        });
+
+        it('should take a snapshot', function() {
+          expect(model.snapshot).toHaveBeenCalled();
+        });
+
+        it('should broadcast event', function() {
+          expect(scope.$broadcast).toHaveBeenCalledWith('recipe:updateComplete', response);
+          expect(scope.$broadcast).toHaveBeenCalledWith('recipe:updateSuccess', response);
+        });
+      });
+
+      describe('error >', function() {
+        beforeEach(function() {
+          this.promiseSpy.then.mostRecentCall.args[1](response);
+          $rootScope.$digest();
+        });
+
+        it('should flag status', function() {
+          expect(model.is.updating).toBe(false);
+          expect(model.is.processing).toBe(false);
+        });
+
+        it('should broadcast event', function() {
+          expect(scope.$broadcast).toHaveBeenCalledWith('recipe:updateComplete', response);
+          expect(scope.$broadcast).toHaveBeenCalledWith('recipe:updateError', response);
+        });
       });
     });
   });
