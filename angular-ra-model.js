@@ -78,18 +78,17 @@ angular.module('ra.model', ['ra.model.services']);
           return scope;
         };
 
+        if (angular.isFunction(this.config.onload)) {
+          this.config.onload.call(this);
+        }
       };
 
       // Public methods
       raModel.prototype.init = function(params) {
-        if (angular.isFunction(this.beforeInit)) {
-          this.beforeInit(params);
-        }
-
         var call = this.get(params);
 
-        if (angular.isFunction(this.afterInit)) {
-          this.afterInit(call, params);
+        if (angular.isFunction(this.config.init)) {
+          this.config.init.call(this, call, params);
         }
 
         this.is.inited = true;
