@@ -86,6 +86,13 @@
           commitFiles: ['package.json', 'bower.json'],
           pushTo:      'origin'
         }
+      },
+
+      watch: {
+        scripts: {
+          files: ['src/**/*.js'],
+          tasks: ['build']
+        }
       }
     });
 
