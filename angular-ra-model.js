@@ -41,7 +41,7 @@ angular.module('ra.model', ['ra.model.services']);
       };
     })
 
-    .factory('raModel', function($rootScope, $cacheFactory, $location, $q) {
+    .factory('raModel', function($rootScope, $cacheFactory, $location, $log, $q) {
       var model_cache = $cacheFactory('raModel');
 
       // Constructor
@@ -78,14 +78,24 @@ angular.module('ra.model', ['ra.model.services']);
           return scope;
         };
 
-        if (angular.isFunction(this.config.onload)) {
-          this.config.onload.call(this);
+        if (angular.isFunction(this.onload)) {
+          this.onload.call(this);
         }
       };
 
       // Public methods
       raModel.prototype.init = function(params) {
+        if (angular.isFunction(this.beforeInit)) {
+          this.beforeInit.call(this, params);
+          $log.warn('raModel.beforeInit is deprecated, use init instead');
+        }
+
         var call = this.get(params);
+
+        if (angular.isFunction(this.afterInit)) {
+          this.afterInit.call(this, call, params);
+          $log.warn('raModel.init is deprecated, use init instead');
+        }
 
         if (angular.isFunction(this.config.init)) {
           this.config.init.call(this, call, params);
@@ -330,35 +340,39 @@ angular.module('ra.model', ['ra.model.services']);
         }
       };
 
-      raModel.prototype.data = raModel.prototype.getData = function() {
-        var self = this,
-            data;
+      var getData = function getData(resource) {
+        var data;
 
-        if (angular.isArray(self[self.resource_attribute])) {
+        if (angular.isArray(resource)) {
           data = [];
 
-          angular.forEach(self[self.resource_attribute], function(resource) {
-            var resource_data = {};
-
-            angular.forEach(self._getAttrs(), function(attr) {
-              if (attr in resource) {
-                resource_data[attr] = angular.copy(resource[attr]);
-              }
-            });
-
-            data.push(resource_data);
-          });
+          angular.forEach(resource, function(r) {
+            data.push(getData.call(this, r));
+          }.bind(this));
         } else {
           data = {};
 
-          angular.forEach(self._getAttrs(), function(attr) {
-            if (attr in self) {
-              data[attr] = angular.copy(self[attr]);
+          angular.forEach(this._getAttrs(), function(attr) {
+            if (attr in resource) {
+              data[attr] = angular.copy(resource[attr]);
             }
           });
         }
 
         return data;
+      };
+
+      raModel.prototype.data = raModel.prototype.getData = function(_resource) {
+        var self = this,
+            resource;
+
+        if (arguments.length > 0) {
+          resource = _resource;
+        } else {
+          resource = this[this.resource_attribute] || this;
+        }
+
+        return getData.call(this, resource);
       };
 
       // Privileged methods
