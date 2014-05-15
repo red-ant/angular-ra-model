@@ -53,5 +53,6 @@
   "nomen"         : false,
   "onevar"        : false,
   "passfail"      : false,
-  "white"         : false
+  "white"         : false,
+  "es3"           : true
 }

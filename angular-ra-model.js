@@ -201,7 +201,7 @@ angular.module('ra.model', ['ra.model.services']);
           promise = promise.then(this.config.updateSuccess.bind(this));
         }
         if (angular.isFunction(this.config.updateError)) {
-          promise = promise.catch(this.config.updateError.bind(this));
+          promise = promise['catch'](this.config.updateError.bind(this));
         }
 
         return promise
