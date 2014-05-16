@@ -176,7 +176,7 @@
         var promise;
 
         if (angular.isFunction(this.config.update)) {
-          promise = this.config.update.call(this, this.getData());
+          promise = this.config.update.apply(this, arguments);
         }
 
         else if (angular.isFunction(this.$update)) {

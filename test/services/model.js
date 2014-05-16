@@ -233,7 +233,7 @@ describe('raModel >', function() {
 
     it('should call the update method specified in the config', function() {
       model.extend({ update: jasmine.createSpy('updateSpy') });
-      model.update();
+      model.update(response);
       expect(model.config.update).toHaveBeenCalledWith(response);
     });
 
