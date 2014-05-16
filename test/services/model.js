@@ -82,11 +82,6 @@ describe('raModel >', function() {
       expect(model.get).not.toEqual(config.get);
       expect(model.someRandomMethod).toEqual(config.someRandomMethod);
     });
-
-    it('should also be a factory method', function() {
-      model = raModel();
-      expect(model.constructor).toEqual(raModel);
-    });
   });
 
   describe('init >', function() {

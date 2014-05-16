@@ -46,10 +46,6 @@ angular.module('ra.model', ['ra.model.services']);
 
       // Constructor
       var raModel = function raModel(scope, name, config) {
-        if (!(this instanceof raModel) ) {
-          return new raModel(scope, name, config);
-        }
-
         var args = Array.prototype.slice.call(arguments),
             model;
 

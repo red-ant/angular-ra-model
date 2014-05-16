@@ -5,7 +5,13 @@
     "**/.*",
     "components",
     "node_modules",
-    "test"
+    "src",
+    "test",
+    "Gruntfile.js",
+    "karma.conf.js",
+    "bower.json",
+    "package.json",
+    "LICENSE"
   ],
   "dependencies": {
     "angular": "~1.2.0",
