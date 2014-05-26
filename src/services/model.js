@@ -59,12 +59,12 @@
         this.extend(config);
 
         // Set privileged vars
-        this.name               = name;
         this.is                 = config.is || {};
         this.opts               = config.opts || {};
         this.attr_accessible    = config.attr_accessible || [];
         this.attr_protected     = config.attr_protected || [];
         this.resource_attribute = config.resource_attribute || 'items';
+        this.opts.name          = this.opts.name || name;
 
         // Privileged accessors
         this._scope = function() {
@@ -377,6 +377,18 @@
         };
       };
 
+      // Attribute setter, which makes the attribute available
+      // for getData()
+      raModel.prototype.setAttr = function(attr, value) {
+        this[attr] = value;
+
+        this.attr_accessible.push(attr);
+
+        if (angular.isArray(this._attrs)) {
+          this._attrs.push(attr);
+        }
+      };
+
       raModel.prototype._setAttrs = function(response) {
         var obj;
 
@@ -428,7 +440,7 @@
           k.push($location.path());
         }
 
-        k.push(this.name);
+        k.push(this.opts.name);
 
         return k.join('|');
       };
@@ -444,7 +456,7 @@
 
             angular.forEach(messages, function(message) {
               var args = angular.copy(params);
-              args.unshift(self.name +':'+ message);
+              args.unshift(self.opts.name +':'+ message);
 
               scope.$broadcast.apply(scope, args);
             });
