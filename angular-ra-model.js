@@ -170,10 +170,12 @@ angular.module('ra.model', ['ra.model.services']);
           this._broadcast('updateComplete', 'updateSuccess').data(response);
         };
 
-        var updateError = function updateError(response) {
+        var updateError = function updateError(error) {
           this.is.updating   = false;
           this.is.processing = false;
-          this._broadcast('updateComplete', 'updateError').data(response);
+          this._broadcast('updateComplete', 'updateError').data(error);
+
+          return $q.reject(error);
         };
 
         var promise;
